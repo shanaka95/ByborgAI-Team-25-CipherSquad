@@ -1,6 +1,5 @@
 import os
 import cv2
-import argparse
 import time
 import logging
 import uuid
@@ -111,14 +110,41 @@ def extract_frames(
     
     return frames
 
+def is_video_already_processed(qdrant: QdrantManager, video_path: str) -> bool:
+    """
+    Check if a video has already been processed and stored in Qdrant.
+    
+    Args:
+        qdrant: QdrantManager instance
+        video_path: Path to the video file
+        
+    Returns:
+        True if video has already been processed, False otherwise
+    """
+    # Create a filter to search for the video path in payloads
+    filter_conditions = {
+        "must": [
+            {
+                "key": "video_path",
+                "match": {"value": video_path}
+            }
+        ]
+    }
+    
+    # Count points matching the filter
+    count = qdrant.count_points(filter_conditions=filter_conditions)
+    
+    return count > 0
+
 def process_video_directory(
     data_dir: str,
-    clip_model: str = "ViT-B/32",
+    clip_model: str = "clip-ViT-B-16",
     qdrant_collection: str = "video_frames",
     fps: int = 1,
     max_frames_per_video: Optional[int] = None,
     batch_size: int = 32,
-    recreate_collection: bool = False
+    recreate_collection: bool = False,
+    skip_existing: bool = True
 ) -> None:
     """
     Process all videos in a directory, extract frames, and store embeddings in Qdrant.
@@ -131,6 +157,7 @@ def process_video_directory(
         max_frames_per_video: Maximum frames to extract per video
         batch_size: Batch size for processing
         recreate_collection: Whether to recreate the Qdrant collection
+        skip_existing: Whether to skip videos that have already been processed
     """
     # Initialize CLIP encoder
     logger.info(f"Initializing CLIP encoder with model {clip_model}")
@@ -151,9 +178,21 @@ def process_video_directory(
     video_files = list_video_files(data_dir)
     logger.info(f"Found {len(video_files)} video files")
     
+    # Count for statistics
+    videos_processed = 0
+    videos_skipped = 0
+    frames_processed = 0
+    
     # Process each video
     for video_path in video_files:
         video_name = os.path.basename(video_path)
+        
+        # Check if video has already been processed
+        if skip_existing and is_video_already_processed(qdrant, video_path):
+            logger.info(f"Video already processed, skipping: {video_name}")
+            videos_skipped += 1
+            continue
+            
         logger.info(f"Processing video: {video_name}")
         
         # Extract frames
@@ -198,30 +237,40 @@ def process_video_directory(
                 payloads=payloads
             )
             
+            frames_processed += len(batch_frames)
             logger.info(f"Added {len(batch_frames)} embeddings from {video_name} to Qdrant")
+        
+        videos_processed += 1
     
     # Get final stats
     collection_info = qdrant.get_collection_info()
-    logger.info(f"Finished processing. Collection stats: {collection_info}")
+    logger.info(f"Processing complete:")
+    logger.info(f"- Videos processed: {videos_processed}")
+    logger.info(f"- Videos skipped (already processed): {videos_skipped}")
+    logger.info(f"- Total frames processed: {frames_processed}")
+    logger.info(f"- Collection stats: {collection_info}")
 
+
+# Configuration variables instead of command-line arguments
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process videos and store frame embeddings in Qdrant")
-    parser.add_argument("--data_dir", type=str, required=True, help="Directory containing video files")
-    parser.add_argument("--clip_model", type=str, default="ViT-B/32", help="CLIP model to use")
-    parser.add_argument("--qdrant_collection", type=str, default="video_frames", help="Qdrant collection name")
-    parser.add_argument("--fps", type=int, default=1, help="Frames per second to extract")
-    parser.add_argument("--max_frames", type=int, default=None, help="Maximum frames to extract per video")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size for processing")
-    parser.add_argument("--recreate", action="store_true", help="Recreate Qdrant collection")
+    # Predefined variables for the script
+    DATA_DIR = "data"  # Directory containing video files
+    CLIP_MODEL = "clip-ViT-B-16"  # CLIP model to use
+    QDRANT_COLLECTION = "videos"  # Qdrant collection name
+    FPS = 1  # Frames per second to extract
+    MAX_FRAMES = None  # Maximum frames to extract per video (None for all)
+    BATCH_SIZE = 32  # Batch size for processing
+    RECREATE_COLLECTION = False  # Whether to recreate the Qdrant collection
+    SKIP_EXISTING = True  # Whether to skip videos that have already been processed
     
-    args = parser.parse_args()
-    
+    # Run the processing function with predefined variables
     process_video_directory(
-        data_dir=args.data_dir,
-        clip_model=args.clip_model,
-        qdrant_collection=args.qdrant_collection,
-        fps=args.fps,
-        max_frames_per_video=args.max_frames,
-        batch_size=args.batch_size,
-        recreate_collection=args.recreate
+        data_dir=DATA_DIR,
+        clip_model=CLIP_MODEL,
+        qdrant_collection=QDRANT_COLLECTION,
+        fps=FPS,
+        max_frames_per_video=MAX_FRAMES,
+        batch_size=BATCH_SIZE,
+        recreate_collection=RECREATE_COLLECTION,
+        skip_existing=SKIP_EXISTING
     ) 

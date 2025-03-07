@@ -66,59 +66,64 @@ class QdrantManager:
     
     def create_collection(
         self,
-        distance: str = "Cosine",
+        distance: str = "cosine",
         on_disk_payload: bool = True,
         hnsw_config: Optional[Dict[str, Any]] = None,
         optimizers_config: Optional[Dict[str, Any]] = None,
         force_recreate: bool = False
     ) -> bool:
         """
-        Create a new collection or validate an existing one.
+        Create a collection with specified parameters.
         
         Args:
-            distance: Distance metric ("Cosine", "Euclid", "Dot")
-            on_disk_payload: Store payload on disk instead of RAM
-            hnsw_config: HNSW index configuration
-            optimizers_config: Optimizers configuration
-            force_recreate: If True, recreate collection if it exists
+            distance: Distance function ("cosine", "euclid", or "dot")
+            on_disk_payload: Whether to store payload on disk instead of RAM
+            hnsw_config: Configuration for HNSW index
+            optimizers_config: Configuration for segment optimizers
+            force_recreate: Whether to recreate collection if it exists
             
         Returns:
             bool: Success status
         """
         try:
             # Check if collection exists
-            collections = self.client.get_collections().collections
-            exists = any(collection.name == self.collection_name for collection in collections)
-            
-            if exists:
+            if self.collection_exists():
                 if force_recreate:
-                    logger.info(f"Collection {self.collection_name} exists, recreating...")
-                    self.client.delete_collection(collection_name=self.collection_name)
+                    logger.info(f"Collection {self.collection_name} exists, deleting due to force_recreate=True")
+                    self.delete_collection()
                 else:
                     logger.info(f"Collection {self.collection_name} already exists")
                     return True
+                
+            # Convert distance string to Qdrant enum
+            # Ensure lowercase for case-insensitive comparison
+            distance = distance.lower()
+            if distance == "cosine":
+                distance_func = models.Distance.COSINE
+            elif distance == "euclid" or distance == "euclidean":
+                distance_func = models.Distance.EUCLID
+            elif distance == "dot":
+                distance_func = models.Distance.DOT
+            else:
+                logger.error(f"Unsupported distance function: {distance}")
+                return False
             
-            # Default HNSW config
-            if hnsw_config is None:
-                hnsw_config = {
-                    "m": 16,
-                    "ef_construct": 100,
-                    "full_scan_threshold": 10000
-                }
-            
-            # Create collection
-            self.client.create_collection(
-                collection_name=self.collection_name,
-                vectors_config=models.VectorParams(
-                    size=self.vector_size,
-                    distance=models.Distance[distance]
-                ),
-                hnsw_config=models.HnswConfigDiff(**hnsw_config) if hnsw_config else None,
-                optimizers_config=models.OptimizersConfigDiff(**optimizers_config) if optimizers_config else None,
-                on_disk_payload=on_disk_payload
+            # Create vector configuration
+            vector_config = models.VectorParams(
+                size=self.vector_size,
+                distance=distance_func
             )
             
-            logger.info(f"Collection {self.collection_name} created successfully")
+            # Create collection with specified parameters
+            self.client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config=vector_config,
+                on_disk_payload=on_disk_payload,
+                hnsw_config=models.HnswConfigDiff(**hnsw_config) if hnsw_config else None,
+                optimizers_config=models.OptimizersConfigDiff(**optimizers_config) if optimizers_config else None
+            )
+            
+            logger.info(f"Created collection {self.collection_name} with vector size {self.vector_size}")
             return True
             
         except Exception as e:
@@ -410,13 +415,12 @@ class QdrantManager:
         Delete the collection.
         
         Returns:
-            bool: Success status
+            bool: True if deletion was successful, False otherwise
         """
         try:
             self.client.delete_collection(collection_name=self.collection_name)
-            logger.info(f"Collection {self.collection_name} deleted")
+            logger.info(f"Collection {self.collection_name} deleted successfully")
             return True
-            
         except Exception as e:
             logger.error(f"Error deleting collection {self.collection_name}: {str(e)}")
             return False
@@ -469,4 +473,18 @@ class QdrantManager:
             
         except Exception as e:
             logger.error(f"Error scrolling points in {self.collection_name}: {str(e)}")
-            return [], None 
+            return [], None
+    
+    def collection_exists(self) -> bool:
+        """
+        Check if the collection exists.
+        
+        Returns:
+            bool: True if collection exists, False otherwise
+        """
+        try:
+            collections = self.client.get_collections().collections
+            return any(collection.name == self.collection_name for collection in collections)
+        except Exception as e:
+            logger.error(f"Error checking if collection {self.collection_name} exists: {str(e)}")
+            return False 
