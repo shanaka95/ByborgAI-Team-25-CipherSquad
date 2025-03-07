@@ -14,6 +14,14 @@ import glob
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Try to import optional dependencies
+try:
+    import lightgbm as lgb
+    LIGHTGBM_AVAILABLE = True
+except ImportError:
+    logger.warning("LightGBM not available. LambdaMART reranking will be disabled.")
+    LIGHTGBM_AVAILABLE = False
+
 class VideoRecommender:
     def __init__(self, qdrant_host: str = "localhost", qdrant_port: int = 6333):
         """Initialize the video recommender with BERT model and Qdrant client"""
@@ -32,6 +40,12 @@ class VideoRecommender:
         # Load Node2Vec model embeddings if available
         self.node2vec_embeddings = None
         self.load_node2vec_embeddings()
+        
+        # Load LambdaMART model if available
+        self.lambdamart_model = None
+        self.feature_names = None
+        if LIGHTGBM_AVAILABLE:
+            self.load_lambdamart_model()
     
     def load_node2vec_embeddings(self):
         """Load Node2Vec embeddings from the most recent model file"""
@@ -68,6 +82,31 @@ class VideoRecommender:
         except Exception as e:
             logger.error(f"Error loading Node2Vec embeddings: {str(e)}")
             self.node2vec_embeddings = None
+    
+    def load_lambdamart_model(self):
+        """Load LambdaMART model for reranking"""
+        try:
+            # Look for LambdaMART model files
+            models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+            model_path = os.path.join(models_dir, "lambdamart_model.txt")
+            feature_path = os.path.join(models_dir, "feature_names.pkl")
+            
+            if os.path.exists(model_path) and os.path.exists(feature_path):
+                # Load feature names
+                with open(feature_path, 'rb') as f:
+                    self.feature_names = pickle.load(f)
+                
+                # Load model
+                self.lambdamart_model = lgb.Booster(model_file=model_path)
+                logger.info(f"Loaded LambdaMART model from {model_path}")
+                logger.info(f"Model features: {self.feature_names}")
+                return
+                
+            logger.warning("LambdaMART model files not found")
+            
+        except Exception as e:
+            logger.error(f"Error loading LambdaMART model: {str(e)}")
+            self.lambdamart_model = None
     
     def _get_bert_embedding(self, text: str) -> np.ndarray:
         """Generate BERT embedding for text"""
@@ -213,6 +252,52 @@ class VideoRecommender:
             
         return dot_product / (norm_vec1 * norm_vec2)
     
+    def rerank_with_lambdamart(self, video_pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Rerank video pairs using LambdaMART model"""
+        if not LIGHTGBM_AVAILABLE or self.lambdamart_model is None or not video_pairs:
+            logger.warning("LambdaMART reranking not available or no videos to rerank")
+            return video_pairs
+        
+        try:
+            # Prepare features for LambdaMART
+            features = []
+            
+            for video in video_pairs:
+                # Extract features needed by the model
+                video_features = []
+                
+                # Add description similarity
+                video_features.append(video["similarity_score"])
+                
+                # Add category match (if available)
+                if "category_match" in video:
+                    category_match_numeric = 1 if video["category_match"] == "Y" else 0
+                    video_features.append(category_match_numeric)
+                else:
+                    # If category match is not available, use a default value
+                    video_features.append(0)
+                
+                features.append(video_features)
+            
+            # Convert to numpy array
+            features_array = np.array(features)
+            
+            # Make predictions
+            scores = self.lambdamart_model.predict(features_array)
+            
+            # Add scores to videos
+            for i, video in enumerate(video_pairs):
+                video["lambdamart_score"] = float(scores[i])
+            
+            # Sort by LambdaMART score (descending)
+            reranked_videos = sorted(video_pairs, key=lambda x: x["lambdamart_score"], reverse=True)
+            
+            return reranked_videos
+            
+        except Exception as e:
+            logger.error(f"Error reranking with LambdaMART: {str(e)}")
+            return video_pairs
+    
     def get_recommendations_for_session(self, session_videos: List[str], recommendations_per_video: int = 5) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
         """Get recommendations based on a list of previously watched videos"""
         recommendations = {}
@@ -220,7 +305,8 @@ class VideoRecommender:
         for video_name in session_videos:
             video_recommendations = {
                 "bert": [],
-                "node2vec": []
+                "node2vec": [],
+                "combined": []
             }
             
             # Get video description
@@ -232,18 +318,42 @@ class VideoRecommender:
                 description = video_info.get("description", "")
                 if description:
                     # Find similar videos using BERT
-                    similar_videos = self.find_similar_videos(description, limit=recommendations_per_video)
+                    similar_videos = self.find_similar_videos(description, limit=recommendations_per_video * 2)
                     
                     # Filter out the original video from recommendations
                     video_recommendations["bert"] = [
                         video for video in similar_videos 
                         if video["video_id"] != video_name
-                    ]
+                    ][:recommendations_per_video]
             
             # Get Node2Vec-based recommendations
             if self.node2vec_embeddings:
-                node2vec_recommendations = self.find_similar_videos_node2vec(video_name, limit=recommendations_per_video)
-                video_recommendations["node2vec"] = node2vec_recommendations
+                node2vec_recommendations = self.find_similar_videos_node2vec(video_name, limit=recommendations_per_video * 2)
+                video_recommendations["node2vec"] = node2vec_recommendations[:recommendations_per_video]
+            
+            # Combine all recommendations for reranking
+            all_recommendations = []
+            all_recommendations.extend(video_recommendations["bert"])
+            all_recommendations.extend(video_recommendations["node2vec"])
+            
+            # Remove duplicates (prefer BERT if duplicate)
+            seen_videos = set()
+            unique_recommendations = []
+            
+            for rec in all_recommendations:
+                video_id = rec["video_id"]
+                if video_id not in seen_videos and video_id != video_name:
+                    seen_videos.add(video_id)
+                    unique_recommendations.append(rec)
+            
+            # Rerank with LambdaMART if available
+            if LIGHTGBM_AVAILABLE and self.lambdamart_model is not None:
+                reranked_recommendations = self.rerank_with_lambdamart(unique_recommendations)
+                # Take top 10 after reranking
+                video_recommendations["combined"] = reranked_recommendations[:10]
+            else:
+                # If LambdaMART is not available, just combine and take top 10
+                video_recommendations["combined"] = unique_recommendations[:10]
             
             recommendations[video_name] = video_recommendations
             
@@ -288,11 +398,24 @@ def main():
         if node2vec_recs:
             print("\n  Node2Vec-based recommendations (user behavior similarity):")
             for i, video in enumerate(node2vec_recs, 1):
-                print(f"  {i}. {video['video_id']} (Similarity: {video['similarity_score']:.2f})")
+                print(f"  {i}. {video['video_id']}")
                 if video['description'] != "No description available":
                     print(f"     Description: {video['description'][:100]}...")
         else:
             print("\n  No Node2Vec-based recommendations found.")
+        
+        # Print LambdaMART reranked recommendations
+        combined_recs = rec_sources.get("combined", [])
+        if combined_recs:
+            print("\n  TOP 10 RECOMMENDATIONS (LambdaMART reranked):")
+            for i, video in enumerate(combined_recs, 1):
+                score_info = f"(LambdaMART - "
+                score_info += f"{video['source'].upper()})"
+                print(f"  {i}. {video['video_id']} {score_info}")
+                if video['description'] != "No description available":
+                    print(f"     Description: {video['description'][:100]}...")
+        else:
+            print("\n  No combined recommendations found.")
 
 if __name__ == "__main__":
     main()
