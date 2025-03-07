@@ -1,0 +1,110 @@
+{
+  "graph_stats": {
+    "num_nodes": 643,
+    "num_edges": 486,
+    "avg_degree": 1.5116640746500778,
+    "density": 0.0023546169387072863,
+    "avg_clustering": 0.0015552099533437014
+  },
+  "video_stats": {
+    "total_videos": 1152,
+    "total_views": 24946,
+    "avg_views_per_video": 21.65451388888889,
+    "top_videos": [
+      {
+        "video": "scenecliptest00047.avi",
+        "views": 38
+      },
+      {
+        "video": "scenecliptest00036.avi",
+        "views": 38
+      },
+      {
+        "video": "scenecliptest00473.avi",
+        "views": 36
+      },
+      {
+        "video": "scenecliptest00127.avi",
+        "views": 36
+      },
+      {
+        "video": "sceneclipautoautotrain00508.avi",
+        "views": 35
+      },
+      {
+        "video": "scenecliptest00472.avi",
+        "views": 35
+      },
+      {
+        "video": "sceneclipautoautotrain00025.avi",
+        "views": 34
+      },
+      {
+        "video": "sceneclipautoautotrain00067.avi",
+        "views": 34
+      },
+      {
+        "video": "sceneclipautoautotrain00528.avi",
+        "views": 34
+      },
+      {
+        "video": "scenecliptest00414.avi",
+        "views": 33
+      }
+    ]
+  },
+  "connection_stats": {
+    "strongest_connections": [
+      {
+        "video1": "scenecliptest00422.avi",
+        "video2": "sceneclipautoautotrain00166.avi",
+        "co_views": 4
+      },
+      {
+        "video1": "scenecliptest00310.avi",
+        "video2": "sceneclipautoautotrain00302.avi",
+        "co_views": 3
+      },
+      {
+        "video1": "sceneclipautoautotrain00078.avi",
+        "video2": "scenecliptest00472.avi",
+        "co_views": 3
+      },
+      {
+        "video1": "sceneclipautoautotrain00311.avi",
+        "video2": "sceneclipautoautotrain00406.avi",
+        "co_views": 3
+      },
+      {
+        "video1": "sceneclipautoautotrain00368.avi",
+        "video2": "scenecliptest00473.avi",
+        "co_views": 3
+      },
+      {
+        "video1": "sceneclipautoautotrain00051.avi",
+        "video2": "sceneclipautoautotrain00261.avi",
+        "co_views": 3
+      },
+      {
+        "video1": "scenecliptest00377.avi",
+        "video2": "scenecliptest00460.avi",
+        "co_views": 3
+      },
+      {
+        "video1": "sceneclipautoautotrain00131.avi",
+        "video2": "scenecliptest00304.avi",
+        "co_views": 3
+      },
+      {
+        "video1": "sceneclipautoautotrain00099.avi",
+        "video2": "sceneclipautoautotrain00246.avi",
+        "co_views": 2
+      },
+      {
+        "video1": "sceneclipautoautotrain00035.avi",
+        "video2": "sceneclipautoautotrain00152.avi",
+        "co_views": 2
+      }
+    ]
+  }
+}
