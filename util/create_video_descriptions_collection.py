@@ -5,16 +5,49 @@ import logging
 import uuid
 import time
 from typing import Dict, List, Optional
+from transformers import AutoTokenizer, AutoModel
+import torch
+import numpy as np
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 class VideoDescriptionManager:
     def __init__(self, qdrant_host: str = "localhost", qdrant_port: int = 6333):
-        """Initialize connection to Qdrant"""
+        """Initialize connection to Qdrant and BERT model"""
         self.client = QdrantClient(host=qdrant_host, port=qdrant_port)
         self.videos_collection = "videos"
         self.descriptions_collection = "video_descriptions"
+        
+        # Initialize BERT model and tokenizer
+        logger.info("Loading BERT model...")
+        self.tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+        self.model = AutoModel.from_pretrained('bert-base-uncased')
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model.to(self.device)
+        logger.info(f"BERT model loaded successfully (using {self.device})")
+        
+    def _get_bert_embedding(self, text: str) -> np.ndarray:
+        """Generate BERT embedding for text"""
+        try:
+            # Tokenize and prepare input
+            inputs = self.tokenizer(text, 
+                                  return_tensors="pt", 
+                                  truncation=True, 
+                                  max_length=512, 
+                                  padding=True).to(self.device)
+            
+            # Generate embeddings
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+                # Use [CLS] token embedding as text representation
+                embedding = outputs.last_hidden_state[:, 0, :].cpu().numpy()[0]
+                
+            return embedding
+            
+        except Exception as e:
+            logger.error(f"Error generating BERT embedding: {str(e)}")
+            raise
         
     def setup_collections(self):
         """Set up both videos and descriptions collections with proper schema"""
@@ -35,10 +68,10 @@ class VideoDescriptionManager:
             exists = any(collection.name == self.descriptions_collection for collection in collections)
             
             if not exists:
-                # Create collection for descriptions
+                # Create collection for descriptions with BERT embedding dimension
                 self.client.create_collection(
                     collection_name=self.descriptions_collection,
-                    vectors_config=VectorParams(size=512, distance=Distance.COSINE)
+                    vectors_config=VectorParams(size=768, distance=Distance.COSINE)  # BERT base outputs 768-dim vectors
                 )
                 logger.info(f"Created collection: {self.descriptions_collection}")
                 
@@ -58,7 +91,7 @@ class VideoDescriptionManager:
                 # Create collection for videos
                 self.client.create_collection(
                     collection_name=self.videos_collection,
-                    vectors_config=VectorParams(size=512, distance=Distance.COSINE)
+                    vectors_config=VectorParams(size=768, distance=Distance.COSINE)  # Match BERT dimension
                 )
                 logger.info(f"Created collection: {self.videos_collection}")
                 
@@ -98,6 +131,10 @@ class VideoDescriptionManager:
             # Generate unique ID for the description
             description_id = str(uuid.uuid4())
             
+            # Generate BERT embedding for the description
+            logger.info(f"Generating embedding for video: {video_name}")
+            embedding = self._get_bert_embedding(description["description"])
+            
             # Create the description payload
             description_payload = {
                 "video_id": video_name,
@@ -107,27 +144,27 @@ class VideoDescriptionManager:
                 "timestamp": time.time()
             }
             
-            # Save description
+            # Save description with embedding
             self.client.upsert(
                 collection_name=self.descriptions_collection,
                 points=models.Batch(
                     ids=[description_id],
-                    vectors=[[0.0] * 512],  # Placeholder vector
+                    vectors=[embedding.tolist()],
                     payloads=[description_payload]
                 )
             )
             
-            # Update video record with description reference
-            self._update_video_description_ref(video_name, description_id)
+            # Update video record with description reference and embedding
+            self._update_video_description_ref(video_name, description_id, embedding)
             
-            logger.info(f"Saved description for video: {video_name}")
+            logger.info(f"Saved description and embedding for video: {video_name}")
             return description_id
             
         except Exception as e:
             logger.error(f"Error saving description for {video_name}: {str(e)}")
             raise
 
-    def _update_video_description_ref(self, video_name: str, description_id: str):
+    def _update_video_description_ref(self, video_name: str, description_id: str, embedding: np.ndarray):
         """Update the video record with reference to its description"""
         try:
             # Find the video record
@@ -160,7 +197,7 @@ class VideoDescriptionManager:
                     collection_name=self.videos_collection,
                     points=models.Batch(
                         ids=[video_id],
-                        vectors=[[0.0] * 512],  # Placeholder vector
+                        vectors=[embedding.tolist()],  # Use same embedding as description
                         payloads=[{
                             "videos": video_name,
                             "description_id": description_id
@@ -170,6 +207,34 @@ class VideoDescriptionManager:
                 
         except Exception as e:
             logger.error(f"Error updating video reference for {video_name}: {str(e)}")
+            raise
+
+    def find_similar_videos(self, query_text: str, limit: int = 5) -> List[Dict]:
+        """Find videos with similar descriptions using BERT embeddings"""
+        try:
+            # Generate embedding for query text
+            query_embedding = self._get_bert_embedding(query_text)
+            
+            # Search for similar descriptions
+            search_results = self.client.search(
+                collection_name=self.descriptions_collection,
+                query_vector=query_embedding.tolist(),
+                limit=limit
+            )
+            
+            # Format results
+            similar_videos = []
+            for result in search_results:
+                similar_videos.append({
+                    "video_id": result.payload["video_id"],
+                    "description": result.payload["description"],
+                    "similarity_score": result.score
+                })
+                
+            return similar_videos
+            
+        except Exception as e:
+            logger.error(f"Error searching for similar videos: {str(e)}")
             raise
 
     def get_video_description(self, video_name: str) -> Optional[Dict]:
@@ -238,12 +303,25 @@ def main():
         print("1. videos collection:")
         print("   - videos (keyword index)")
         print("   - description_id (reference to description)")
+        print("   - vector (768-dim BERT embedding)")
         print("\n2. video_descriptions collection:")
         print("   - video_id (keyword index)")
         print("   - description (text index)")
         print("   - timestamp (float index)")
         print("   - model_used (keyword index)")
+        print("   - vector (768-dim BERT embedding)")
         print("   - num_frames (stored in payload)")
+        
+        # Test semantic search functionality
+        test_query = "people walking in a city"
+        print(f"\nTesting semantic search with query: '{test_query}'")
+        similar_videos = manager.find_similar_videos(test_query, limit=3)
+        
+        print("\nSimilar videos found:")
+        for video in similar_videos:
+            print(f"\nVideo: {video['video_id']}")
+            print(f"Similarity score: {video['similarity_score']:.3f}")
+            print(f"Description: {video['description']}")
         
     except Exception as e:
         print(f"Error: {str(e)}")
