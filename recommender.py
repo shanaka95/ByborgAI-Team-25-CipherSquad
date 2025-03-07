@@ -358,6 +358,56 @@ class VideoRecommender:
             recommendations[video_name] = video_recommendations
             
         return recommendations
+    
+    def get_recommendations_as_list(self, user_id: str, session_videos: List[str], max_recommendations: int = 10) -> List[str]:
+        """
+        Get recommendations as a simple list of video IDs.
+        
+        Args:
+            user_id: The ID of the user
+            session_videos: List of videos the user has watched
+            max_recommendations: Maximum number of recommendations to return
+            
+        Returns:
+            List of recommended video IDs
+        """
+        # Get detailed recommendations
+        detailed_recommendations = self.get_recommendations_for_session(session_videos)
+        
+        # Collect all combined recommendations from all session videos
+        all_recommendations = []
+        for video_name, rec_sources in detailed_recommendations.items():
+            combined_recs = rec_sources.get("combined", [])
+            all_recommendations.extend(combined_recs)
+        
+        # Remove duplicates while preserving order
+        seen_videos = set()
+        unique_recommendations = []
+        
+        for rec in all_recommendations:
+            video_id = rec["video_id"]
+            if video_id not in seen_videos and video_id not in session_videos:
+                seen_videos.add(video_id)
+                unique_recommendations.append(rec)
+        
+        # Sort by LambdaMART score if available, otherwise by similarity score
+        if any("lambdamart_score" in rec for rec in unique_recommendations):
+            sorted_recommendations = sorted(
+                unique_recommendations, 
+                key=lambda x: x.get("lambdamart_score", x["similarity_score"]), 
+                reverse=True
+            )
+        else:
+            sorted_recommendations = sorted(
+                unique_recommendations, 
+                key=lambda x: x["similarity_score"], 
+                reverse=True
+            )
+        
+        # Extract just the video IDs
+        video_ids = [rec["video_id"] for rec in sorted_recommendations[:max_recommendations]]
+        
+        return video_ids
 
 def main():
     # Set user ID
@@ -398,7 +448,7 @@ def main():
         if node2vec_recs:
             print("\n  Node2Vec-based recommendations (user behavior similarity):")
             for i, video in enumerate(node2vec_recs, 1):
-                print(f"  {i}. {video['video_id']}")
+                print(f"  {i}. {video['video_id']} (Similarity: {video['similarity_score']:.2f})")
                 if video['description'] != "No description available":
                     print(f"     Description: {video['description'][:100]}...")
         else:
@@ -409,13 +459,20 @@ def main():
         if combined_recs:
             print("\n  TOP 10 RECOMMENDATIONS (LambdaMART reranked):")
             for i, video in enumerate(combined_recs, 1):
-                score_info = f"(LambdaMART - "
-                score_info += f"{video['source'].upper()})"
+                score_info = f"(LambdaMART: {video.get('lambdamart_score', 0):.2f}, "
+                score_info += f"{video['source'].upper()}: {video['similarity_score']:.2f})"
                 print(f"  {i}. {video['video_id']} {score_info}")
                 if video['description'] != "No description available":
                     print(f"     Description: {video['description'][:100]}...")
         else:
             print("\n  No combined recommendations found.")
+    
+    # Get recommendations as a simple list
+    video_list = recommender.get_recommendations_as_list(user_id, previous_sessions)
+    print("\n\nSIMPLE LIST OF RECOMMENDED VIDEOS:")
+    print("=" * 50)
+    for i, video_id in enumerate(video_list, 1):
+        print(f"{i}. {video_id}")
 
 if __name__ == "__main__":
     main()
