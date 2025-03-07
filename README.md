@@ -62,7 +62,7 @@ This project implements a video recommendation system that provides personalized
 - Optimize video preview generation for better engagement.
 
 ## Contributors
-- [Your Name]
+- CipherSquad
 
 ## License
-This project is licensed under the [MIT License](LICENSE).
+
