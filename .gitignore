@@ -5,3 +5,4 @@ recycle/*
 storage
 .env
 data_converted/*
+webapp/static/*

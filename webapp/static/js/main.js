@@ -23,6 +23,7 @@ let userSessions = {};
 let watchedVideos = [];
 let videoPlayer = null;
 let videoSegments = {}; // Store segment information for videos
+let thumbnailUrls = {}; // Store thumbnail URLs for videos
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
@@ -173,6 +174,9 @@ async function getRecommendations() {
             // Store segment information
             videoSegments = data.video_segments || {};
             
+            // Store thumbnail URLs
+            thumbnailUrls = data.thumbnail_urls || {};
+            
             // Display recommendations
             displayRecommendations(data.recommendations, data.video_descriptions);
         } else {
@@ -222,6 +226,9 @@ function displayRecommendations(recommendations, descriptions) {
     // Clear existing recommendations
     recommendationsGrid.innerHTML = '';
     
+    console.log("Thumbnail URLs:", thumbnailUrls);
+    console.log("Video Segments:", videoSegments);
+    
     if (recommendations && recommendations.length > 0) {
         // Create a card for each recommendation
         recommendations.forEach(videoId => {
@@ -238,7 +245,26 @@ function displayRecommendations(recommendations, descriptions) {
             
             const thumbnail = document.createElement('div');
             thumbnail.className = 'video-thumbnail';
-            thumbnail.innerHTML = '<i class="fas fa-film"></i>';
+            
+            // Check if we have a thumbnail for this video
+            if (thumbnailUrls[videoId]) {
+                console.log(`Using thumbnail for ${videoId}: ${thumbnailUrls[videoId]}`);
+                // Create an image element for the thumbnail
+                const thumbImg = document.createElement('img');
+                thumbImg.src = thumbnailUrls[videoId];
+                thumbImg.alt = `Thumbnail for ${videoId}`;
+                thumbImg.className = 'thumbnail-image';
+                thumbnail.appendChild(thumbImg);
+                
+                // Also set as background for fallback
+                thumbnail.style.backgroundImage = `url('${thumbnailUrls[videoId]}')`;
+                thumbnail.style.backgroundSize = 'cover';
+                thumbnail.style.backgroundPosition = 'center';
+            } else {
+                console.log(`No thumbnail for ${videoId}, using icon fallback`);
+                // Fallback to the icon if no thumbnail is available
+                thumbnail.innerHTML = '<i class="fas fa-film"></i>';
+            }
             
             // Add segment badge if this video has segment information
             if (videoSegments[videoId]) {
@@ -322,7 +348,7 @@ function displayRecommendations(recommendations, descriptions) {
             if (videoSegments[videoId]) {
                 const { start_frame, end_frame } = videoSegments[videoId];
                 // Create a cleaner description without the segment info that we'll display separately
-                const cleanDesc = description.replace(`[Best matching segment: frames ${start_frame}-${end_frame}]`, '');
+                const cleanDesc = description.replace(`[Best matching segment: seconds ${start_frame}-${end_frame}]`, '');
                 desc.textContent = cleanDesc;
                 
                 // Add segment info as a badge

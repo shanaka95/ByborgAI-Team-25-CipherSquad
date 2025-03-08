@@ -32,6 +32,14 @@ except ImportError:
     def find_best_matching_segment(text, video_name, window_size=5):
         return None, None
 
+# Try to import OpenCV for thumbnail extraction
+try:
+    import cv2
+    OPENCV_AVAILABLE = True
+except ImportError:
+    OPENCV_AVAILABLE = False
+    logging.warning("OpenCV (cv2) not available. Thumbnail extraction will be disabled.")
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -48,8 +56,131 @@ recommender = VideoRecommender()
 # Add path to converted videos directory
 CONVERTED_VIDEOS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data_converted")
 
+# Create directory for thumbnails - ensure it's in the static folder
+static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+THUMBNAILS_DIR = os.path.join(static_dir, "thumbnails")
+os.makedirs(THUMBNAILS_DIR, exist_ok=True)
+
+# Set permissions for the thumbnails directory to ensure it's readable
+try:
+    import stat
+    os.chmod(THUMBNAILS_DIR, stat.S_IRWXU | stat.S_IRWXG | stat.S_IROTH | stat.S_IXOTH)
+except Exception as e:
+    logger.warning(f"Could not set permissions for thumbnails directory: {str(e)}")
+
 # Create the directory if it doesn't exist (in case batch conversion hasn't been run yet)
 os.makedirs(CONVERTED_VIDEOS_DIR, exist_ok=True)
+
+def extract_clear_thumbnail(video_path, segment_start, segment_end, output_path, num_samples=5):
+    """
+    Extract a clear thumbnail from a video segment.
+    
+    Args:
+        video_path: Path to the video file
+        segment_start: Start time (in seconds) of the segment
+        segment_end: End time (in seconds) of the segment
+        output_path: Where to save the thumbnail
+        num_samples: Number of frames to sample for clarity analysis
+        
+    Returns:
+        Path to the thumbnail if successful, None otherwise
+    """
+    if not OPENCV_AVAILABLE:
+        logging.warning("OpenCV not available. Cannot extract thumbnail.")
+        return extract_fallback_thumbnail(video_path, segment_start, output_path)
+        
+    try:
+        # Open the video
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            logging.error(f"Could not open video: {video_path}")
+            return extract_fallback_thumbnail(video_path, segment_start, output_path)
+            
+        # Get video properties
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps <= 0:
+            fps = 25  # Default assumption if fps can't be determined
+            
+        # Calculate frame positions to sample
+        duration = segment_end - segment_start
+        interval = duration / (num_samples + 1)
+        sample_times = [segment_start + interval * (i + 1) for i in range(num_samples)]
+        
+        best_frame = None
+        best_clarity = -1
+        
+        for sample_time in sample_times:
+            # Set the frame position
+            frame_pos = int(sample_time * fps)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_pos)
+            
+            # Read the frame
+            ret, frame = cap.read()
+            if not ret:
+                continue
+                
+            # Calculate clarity score (Laplacian variance - higher is clearer)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            clarity = cv2.Laplacian(gray, cv2.CV_64F).var()
+            
+            # Update if this is the clearest frame so far
+            if clarity > best_clarity:
+                best_clarity = clarity
+                best_frame = frame
+        
+        # If we found a clear frame, save it
+        if best_frame is not None:
+            cv2.imwrite(output_path, best_frame)
+            cap.release()
+            return output_path
+            
+        cap.release()
+        return extract_fallback_thumbnail(video_path, segment_start, output_path)
+    except Exception as e:
+        logging.error(f"Error extracting thumbnail with OpenCV: {str(e)}")
+        return extract_fallback_thumbnail(video_path, segment_start, output_path)
+
+def extract_fallback_thumbnail(video_path, time_pos, output_path):
+    """
+    Fallback method to extract a thumbnail using ffmpeg if OpenCV fails
+    """
+    try:
+        # Use ffmpeg to extract a frame at the specified position
+        cmd = [
+            'ffmpeg',
+            '-ss', str(time_pos),  # Seek to position
+            '-i', video_path,      # Input file
+            '-vframes', '1',       # Extract one frame
+            '-q:v', '2',           # High quality
+            '-y',                  # Overwrite output
+            output_path
+        ]
+        
+        # Run ffmpeg command
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        
+        # Wait for the process to complete
+        stdout, stderr = process.communicate()
+        
+        if process.returncode != 0:
+            logging.error(f"Error extracting fallback thumbnail: {stderr}")
+            return None
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            logging.info(f"Fallback thumbnail created successfully: {output_path}")
+            return output_path
+        else:
+            logging.error("Fallback thumbnail file is empty or doesn't exist")
+            return None
+            
+    except Exception as e:
+        logging.error(f"Error in fallback thumbnail extraction: {str(e)}")
+        return None
 
 @app.route('/')
 def index():
@@ -99,6 +230,7 @@ def get_recommendations():
         # Get video descriptions and find best matching segments
         video_descriptions = {}
         video_segments = {}
+        thumbnail_urls = {}
         user_queries_text = ""
         
         # Get user search queries first to use in segment matching
@@ -138,6 +270,60 @@ def get_recommendations():
                             }
                             # Add segment info to description - use "seconds" instead of "frames"
                             video_descriptions[video_id] = f"{description} [Best matching segment: seconds {start_frame}-{end_frame}]"
+                            
+                            # Extract thumbnail from the best segment if possible
+                            if OPENCV_AVAILABLE:
+                                try:
+                                    # Check for MP4 version first (for better thumbnail quality)
+                                    mp4_path = os.path.join(CONVERTED_VIDEOS_DIR, f"{video_id}.mp4")
+                                    if not os.path.exists(mp4_path):
+                                        # If MP4 doesn't exist, try with the exact file format from original data
+                                        video_path = os.path.join(parent_dir, "data", f"{video_id}.avi")
+                                        
+                                        # If that doesn't exist, try finding the file with same numeric ID
+                                        if not os.path.exists(video_path):
+                                            # Extract numeric part from video_id
+                                            match = re.search(r'(\d+)', video_id)
+                                            if match:
+                                                num_id = match.group(1)
+                                                # Find a file with matching numeric ID
+                                                for file in os.listdir(os.path.join(parent_dir, "data")):
+                                                    if file.endswith('.avi') and num_id in file:
+                                                        video_path = os.path.join(parent_dir, "data", file)
+                                                        break
+                                    else:
+                                        video_path = mp4_path
+                                    
+                                    if os.path.exists(video_path):
+                                        # Create a unique thumbnail filename
+                                        thumbnail_filename = f"{video_id}_segment_{start_frame}_{end_frame}.jpg"
+                                        thumbnail_path = os.path.join(THUMBNAILS_DIR, thumbnail_filename)
+                                        
+                                        # Only extract if thumbnail doesn't already exist
+                                        if not os.path.exists(thumbnail_path):
+                                            logger.info(f"Extracting thumbnail for {video_id} from {video_path}")
+                                            thumbnail_path = extract_clear_thumbnail(
+                                                video_path, 
+                                                start_frame, 
+                                                end_frame, 
+                                                thumbnail_path
+                                            )
+                                            if thumbnail_path:
+                                                logger.info(f"Thumbnail created: {thumbnail_path}")
+                                            else:
+                                                logger.warning(f"Failed to create thumbnail for {video_id}")
+                                        
+                                        if thumbnail_path and os.path.exists(thumbnail_path):
+                                            # Create URL for the thumbnail
+                                            thumbnail_url = f"/static/thumbnails/{thumbnail_filename}"
+                                            thumbnail_urls[video_id] = thumbnail_url
+                                            logger.info(f"Thumbnail URL for {video_id}: {thumbnail_url}")
+                                        else:
+                                            logger.warning(f"Thumbnail path doesn't exist: {thumbnail_path}")
+                                    else:
+                                        logger.warning(f"Video file not found for thumbnail extraction: {video_path}")
+                                except Exception as thumb_error:
+                                    logger.error(f"Error extracting thumbnail for {video_id}: {str(thumb_error)}")
                 except Exception as segment_error:
                     logger.error(f"Error finding best segment for {video_id}: {str(segment_error)}")
             else:
@@ -163,6 +349,7 @@ def get_recommendations():
             "recommendations": recommendations,
             "video_descriptions": video_descriptions,
             "video_segments": video_segments,
+            "thumbnail_urls": thumbnail_urls,
             "user_queries": user_queries,
             "preference_summary": preference_summary
         })
@@ -395,6 +582,39 @@ def video_player(video_id):
         return html
     except Exception as e:
         logger.error(f"Error creating video player: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# Add a static route to serve thumbnails directly
+@app.route('/static/thumbnails/<path:filename>')
+def serve_thumbnail(filename):
+    return send_from_directory(THUMBNAILS_DIR, filename)
+
+# Add a diagnostic route to check thumbnails
+@app.route('/check_thumbnails')
+def check_thumbnails():
+    """Check if thumbnails are being created and list them"""
+    try:
+        # Check if OpenCV is available
+        opencv_status = "Available" if OPENCV_AVAILABLE else "Not Available"
+        
+        # List all thumbnails
+        if os.path.exists(THUMBNAILS_DIR):
+            thumbnails = os.listdir(THUMBNAILS_DIR)
+        else:
+            thumbnails = []
+        
+        # Check thumbnails directory path
+        thumbnails_path = THUMBNAILS_DIR
+        
+        return jsonify({
+            "opencv_status": opencv_status,
+            "thumbnails_directory": thumbnails_path,
+            "thumbnails_count": len(thumbnails),
+            "thumbnails": thumbnails,
+            "success": True
+        })
+    except Exception as e:
+        logger.error(f"Error checking thumbnails: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
