@@ -69,6 +69,7 @@ body {
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     height: 100%;
     cursor: pointer;
+    position: relative;
 }
 
 .video-card:hover {
@@ -84,6 +85,55 @@ body {
     justify-content: center;
     color: var(--secondary-color);
     font-size: 3rem;
+    position: relative;
+}
+
+/* Segment badge for thumbnails */
+.segment-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: rgba(74, 107, 255, 0.8);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+}
+
+.segment-badge i {
+    margin-right: 5px;
+    font-size: 0.9rem;
+}
+
+/* Badge for segment information in card */
+.segment-info .badge {
+    font-weight: 400;
+    padding: 5px 10px;
+    border-radius: 4px;
+    background-color: var(--primary-color);
+}
+
+/* Jump to segment button */
+.segment-control {
+    text-align: center;
+}
+
+.segment-control .btn {
+    border-radius: 20px;
+    padding: 6px 15px;
+    transition: all 0.2s ease;
+}
+
+.segment-control .btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.segment-control .btn i {
+    margin-right: 5px;
 }
 
 .video-info {
@@ -119,6 +169,117 @@ body {
     color: var(--secondary-color);
     font-size: 5rem;
     border-radius: 5px;
+}
+
+.video-container {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    border-radius: 5px;
+    background-color: #000;
+}
+
+/* Add margin to the download button container */
+.video-container .text-center {
+    margin-top: 10px;
+}
+
+/* Video.js specific styles */
+.video-js {
+    width: 100% !important;
+    height: 400px !important;
+    border-radius: 5px;
+}
+
+/* Make the big play button more visible */
+.vjs-big-play-centered .vjs-big-play-button {
+    margin-top: -1.5em !important;
+}
+
+/* Customize Video.js controls to match our theme */
+.video-js .vjs-control-bar {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+.video-js .vjs-big-play-button {
+    background-color: rgba(74, 107, 255, 0.8);
+    border-color: #4a6bff;
+}
+
+.video-js:hover .vjs-big-play-button,
+.video-js .vjs-big-play-button:focus {
+    background-color: #4a6bff;
+}
+
+/* Ensure modal is big enough */
+.modal-lg {
+    max-width: 800px;
+}
+
+/* Make sure modal content has proper padding */
+.modal-body {
+    padding: 1rem;
+}
+
+.video-error-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    background-color: #f8d7da;
+    color: #721c24;
+    border-radius: 5px;
+    padding: 20px;
+    text-align: center;
+}
+
+.video-error-message i {
+    font-size: 3rem;
+    margin-bottom: 15px;
+}
+
+/* Style for the spinner */
+.video-error-message i.fa-spinner {
+    color: #4a6bff;
+}
+
+/* Style for the success icon */
+.video-error-message i.fa-check-circle {
+    color: #28a745;
+}
+
+.video-error-message p {
+    font-size: 1.1rem;
+    margin: 0;
+    margin-bottom: 10px;
+}
+
+.video-error-message .error-details,
+.video-error-message .small {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin-bottom: 15px;
+}
+
+.play-button {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    padding: 10px 20px;
+    font-size: 1.2rem;
+    border-radius: 50px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    border: 2px solid white;
+    transition: all 0.3s ease;
+}
+
+.play-button:hover {
+    background-color: var(--primary-color);
+    transform: translate(-50%, -50%) scale(1.1);
 }
 
 /* List Group Styles */
@@ -169,5 +330,76 @@ body {
     
     .video-thumbnail {
         height: 150px;
+    }
+}
+
+/* Segment preview styling */
+.segment-preview-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    z-index: 10;
+    overflow: hidden;
+    border-radius: 5px 5px 0 0;
+}
+
+.segment-preview-container.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.segment-preview-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.segment-preview-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    z-index: 11;
+}
+
+.segment-preview-overlay i {
+    font-size: 2rem;
+    margin-bottom: 10px;
+    animation: pulse 2s infinite;
+}
+
+.segment-preview-overlay span {
+    font-size: 0.9rem;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    font-weight: 500;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 4px 10px;
+    border-radius: 20px;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 0.8;
     }
 } 

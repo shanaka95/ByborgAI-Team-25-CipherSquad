@@ -4,3 +4,4 @@ env
 recycle/*
 storage
 .env
+data_converted/*

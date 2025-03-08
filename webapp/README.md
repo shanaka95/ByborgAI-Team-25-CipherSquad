@@ -59,4 +59,6 @@ The web application consists of:
 - Flask-Session: Server-side session management
 - Pandas: Data manipulation
 - Requests: HTTP requests
+- Hugging Face Hub: LLM integration
+
 - Hugging Face Hub: LLM integration 

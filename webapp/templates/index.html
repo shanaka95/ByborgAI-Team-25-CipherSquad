@@ -8,6 +8,8 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Video.js CSS -->
+    <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet" />
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
@@ -84,9 +86,20 @@
                 </div>
                 <div class="modal-body">
                     <div class="video-container mb-3">
-                        <!-- Placeholder for video -->
-                        <div class="video-placeholder">
-                            <i class="fas fa-film"></i>
+                        <!-- Video.js player -->
+                        <div id="videoWrapper">
+                            <video id="videoPlayer" class="video-js vjs-default-skin vjs-big-play-centered" controls preload="auto" width="640" height="400">
+                                <source id="videoSource" src="" type="video/mp4">
+                                <p class="vjs-no-js">
+                                    To view this video please enable JavaScript, and consider upgrading to a
+                                    web browser that <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
+                                </p>
+                            </video>
+                        </div>
+                        <div class="text-center mt-2">
+                            <a id="downloadVideoLink" href="" target="_blank" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-download"></i> Download Video
+                            </a>
                         </div>
                     </div>
                     <h4 id="modalVideoTitle">Video Title</h4>
@@ -101,6 +114,8 @@
 
     <!-- Bootstrap JS Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Video.js -->
+    <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
     <!-- Custom JS -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
