@@ -359,7 +359,7 @@ class VideoRecommender:
             
         return recommendations
     
-    def get_recommendations_as_list(self, user_id: str, session_videos: List[str], max_recommendations: int = 10) -> List[str]:
+    def get_recommendations_as_list(self, user_id: str, session_videos: List[str], max_recommendations: int = 4) -> List[str]:
         """
         Get recommendations as a simple list of video IDs.
         
