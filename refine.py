@@ -3,6 +3,7 @@ import csv, llm
 import pandas as pd
 import logging
 from typing import List, Dict, Any
+from find_video_segment import find_best_matching_segment
 
 # Configure logging
 logging.basicConfig(
@@ -11,14 +12,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-try:
-    # Try to import the real recommender
-    from recommender import VideoRecommender
-    logger.info("Using real VideoRecommender")
-except ImportError:
-    # Fall back to the mock recommender if the real one is not available
-    from mock_recommender import VideoRecommender
-    logger.info("Using mock VideoRecommender")
+
+from recommender import VideoRecommender
+logger.info("Using real VideoRecommender")
+
 from prompt import generate_preference_summary_prompt
 from llm import generate_preference_summary
 
@@ -37,6 +34,7 @@ class RefinementProcessor:
             qdrant_port: Port for Qdrant vector database
         """
         self.recommender = VideoRecommender(qdrant_host, qdrant_port)
+        self.recommended_products = []
         logger.info("Initialized RefinementProcessor")
         
     def get_user_search_queries(self, user_id: str, csv_path: str) -> List[str]:
@@ -136,14 +134,14 @@ class RefinementProcessor:
             Combined text of product descriptions and user search queries
         """
         # Get recommended products
-        recommended_products = self.get_recommended_products(user_id, session_videos)
+        self.recommended_products = self.get_recommended_products(user_id, session_videos)
         
-        if not recommended_products:
+        if not self.recommended_products:
             logger.warning(f"No recommended products found for user {user_id}")
             return "No recommendations available."
         
         # Get product descriptions
-        product_descriptions = self.get_product_descriptions(recommended_products)
+        product_descriptions = self.get_product_descriptions(self.recommended_products)
         
         # Get user search queries
         user_queries = self.get_user_search_queries(user_id, queries_csv_path)
@@ -190,22 +188,17 @@ def main():
     
     # Generate preference summary using LLM
     preference_summary = generate_preference_summary(preference_prompt)
-    
-    # Print the combined text
-    print("\nCOMBINED TEXT:")
-    print("=" * 80)
-    print(combined_text)
-    print("=" * 80)
-    
-    # Print the preference summary
-    print("\nUSER PREFERENCE SUMMARY:")
-    print("=" * 80)
-    print(preference_summary)
-    print("=" * 80)
-    
-    response = llm.generate_preference_summary(preference_prompt)
 
-    return response
+    print(processor.recommended_products)
+
+    # Find the best matching segment
+    #best_matching_segment = find_best_matching_segment(preference_summary, processor.recommended_products[0])
+
+    for product in processor.recommended_products:
+        best_matching_segment = find_best_matching_segment(preference_summary, product)
+        print(product,best_matching_segment)
+
+    return best_matching_segment
 
 if __name__ == "__main__":
     main()
