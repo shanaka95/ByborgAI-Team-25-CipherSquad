@@ -1,37 +1,36 @@
 # Video Recommendation System
 
 ## Overview
-This project implements a video recommendation system that provides personalized video suggestions to users based on their preferences, popular trends, and recent uploads. The system generates short video previews, selects the most engaging thumbnail, and creates relevant captions to enhance user experience.
+This project develops a video recommendation and generation system that offers personalized video suggestions based on user preferences, trending content, and recent uploads. Also, the system generates short video previews, selects the most engaging thumbnails, and creates relevant captions based on user behavior to enhance the overall user experience.
 
 ## Features
-- **Video Dataset**: A collection of videos stored in a dataset (N video dataset).
-- **Video Selection**: Filtering videos based on user preferences, trending/hit videos, and the latest uploads to create a refined selection (M video set).
-- **Re-Ranking with LTR (Learning to Rank)**: Prioritizing the selected videos using an LTR algorithm to generate the top 10 recommendations.
-- **Content Generation**:
-  - Captions for each recommended video.
-  - Short, engaging previews.
+- **Video Dataset**: We used the Hollywood Movies dataset (https://www.di.ens.fr/~laptev/actions/hollywood2/), which contains over 1,000 short movie clips, totaling approximately 26GB of data.
+- **Video Recommendations**: We use the following techniques to filter and recommend 20-30 videos that match user behavior.
+
+   - Vector Similarity: We use the BERT model to compute the cosine distance between text embeddings of video descriptions, helping identify similar videos.
+   - Node2Vec Model trained on user session data
+   - Currently popular and trending hit videos
+   - Recently uploaded videos
+- Re-Ranking with LTR (Learning to Rank): Prioritizing the selected videos using an LTR algorithm to generate the top 10 recommendations.
+- Content Generation:
+  - We generate a query for each user describing their preferences based on their watch history and likes.
+  - We use a custom avarage distance based algorithm with clip model identify the best video segmentation for that user.
+  - We generate short, engaging preview videos depending on the video segment.
   - Thumbnails customized to user preferences.
-- **User Authentication**: Users log in to receive personalized recommendations.
 
 ## Workflow
-1. **User Logs In**: The system retrieves user data and preferences.
-2. **Video Selection**:
-   - Filters the video dataset to find the most relevant content.
-   - Considers user watch history, trending videos, and the latest uploads.
-3. **Re-Ranking (LTR)**:
-   - Applies Learning to Rank techniques to prioritize the best recommendations.
-   - Selects the top 10 videos for the user.
-4. **Content Enhancement**:
-   - Generates short preview clips highlighting key moments.
-   - Selects the most engaging thumbnail for each video.
-   - Creates captions relevant to the user’s interests.
-5. **Recommendation Display**: The top 10 recommended videos, along with enhanced content, are presented to the user.
+1. **Web app**: Use our Flas web app to test the whole process which is located inside webapp folder.
+
+ 
 
 ## Technologies Used
-- **Machine Learning**: Learning to Rank (LTR) for optimizing recommendations.
-- **Computer Vision**: Thumbnail and short video preview generation.
-- **Natural Language Processing (NLP)**: Caption generation.
-- **Data Processing**: User preference analysis and video metadata processing.
+- **Programming Language**: Python, JavaScript
+- **Machine Learning**: LambdaMART, Node2Vec, BERT, Clip, LLaMA
+- **Web Framework**: Flask
+- **Database**: SQLite, QDRANT
+- **Frontend**: React, TailwindCSS
+- **Backend**: Python
+
 
 ## Installation
 1. Clone the repository:
@@ -40,7 +39,7 @@ This project implements a video recommendation system that provides personalized
    ```
 2. Navigate to the project directory:
    ```sh
-   cd video-recommendation
+   cd webapp
    ```
 3. Install dependencies:
    ```sh
@@ -48,21 +47,12 @@ This project implements a video recommendation system that provides personalized
    ```
 4. Run the application:
    ```sh
-   python main.py
+   python app.py
    ```
 
 ## Usage
-1. Sign up or log in to the system.
-2. View your recommended videos.
-3. Enjoy personalized video previews, captions, and thumbnails tailored to your interests.
+1. Select User sessions from the dropdown menu.
+2. View recommendations.
+3. Enjoy personalized video previews, captions, and thumbnails tailored to users interests.
 
-## Future Improvements
-- Improve recommendation accuracy using deep learning models.
-- Implement real-time user feedback to enhance personalization.
-- Optimize video preview generation for better engagement.
-
-## Contributors
-- CipherSquad
-
-## License
 
