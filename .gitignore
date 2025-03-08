@@ -3,3 +3,4 @@ data/*
 env
 recycle/*
 storage
+.env
